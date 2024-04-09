@@ -1,0 +1,17 @@
+{
+  "name": "@tokenized/signing-agent",
+  "version": "1.0.0",
+  "exports": "./src/index.js",
+  "bin": "./src/cli.js",
+  "scripts": {
+    "test": "node --test"
+  },
+  "type": "module",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@noble/curves": "^1.4.0",
+    "bs58": "^5.0.0"
+  }
+}
