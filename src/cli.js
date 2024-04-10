@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 import API from "./Api.js";
 import { createSecretJWK, createSecretKeyBytes, encrypt } from "./crypto/Encryption.js";
-import { entropyToMnemonic } from "./crypto/bip39Mnemonic.js";
+import { entropyToMnemonic, mnemonicToEntropy } from "./crypto/bip39Mnemonic.js";
 import { normalizeMnemonic } from "./crypto/mnemonic.js";
 import { httpServe } from "./server.js";
-import { mnemonicToEntropy } from "./x.bip39Mnemonic.js";
 import { readFile, writeFile } from "node:fs/promises";
 
 class Config {
@@ -26,9 +25,10 @@ class Config {
     }
 
     static async load(configSource) {
+        if (!configSource) throw "No configuration supplied";
         let configText, configPath;
         if (configSource.startsWith("env:")) {
-            configText = configSource.slice("env:".length);
+            configText = process.env[configSource.slice("env:".length)];
         } else {
             configText = await readFile(configSource, { encoding: "utf8" })
             configPath = configSource;
@@ -68,7 +68,8 @@ async function configureSeedPhrase(config, seedPhraseOptions) {
 
     rootKeyId = await config.api.storeEncryptedRootKey(encryptedEntropy, rootKeyId);
     if (create) {
-        await config.api.registerXPub(seedPhrase);
+        const handle = await config.api.registerXPub(seedPhrase);
+        console.log("Handle", handle);
     }
     config.update({ rootKeyId, encryptionSecret });
     await config.save();
@@ -76,11 +77,13 @@ async function configureSeedPhrase(config, seedPhraseOptions) {
 
 async function seed(configPath, seedPhrase) {
     const config = await Config.load(configPath);
+    if (config.settings.encryptionSecret) throw "Seedphrase already configured";
+
     await configureSeedPhrase(config, seedPhrase);
 }
 
 seed.help = `
-signing-agent seed <secrets.json> <seed phrase options>
+tokenized-signing-agent seed <secrets.json> <seed phrase options>
     Configure a seed phrase for signing
 
 <seed phrase options>
@@ -92,36 +95,46 @@ signing-agent seed <secrets.json> <seed phrase options>
     Use an existing (previously paired for this account) seed phrase
 `;
 
-async function pair(configPath, handle, pairingCode, seedPhraseOptions) {
+async function pair(configPath, pairingCode, seedPhraseOptions) {
     const config = await Config.load(configPath);
+    if (config.settings.privateJWK) throw "Already paired";
+
     config.update(await config.api.pair(pairingCode));
     await config.save();
     if (seedPhraseOptions) {
-        await configureSeedPhrase(config, handle, seedPhraseOptions);
+        await configureSeedPhrase(config, seedPhraseOptions);
     }
 }
 
 pair.help = `
-signing-agent pair <secrets.json> [<seed phrase options>]
+tokenized-signing-agent pair <secrets.json> [<seed phrase options>]
     Pair this agent with a user account and optionally configure a seed phrase
+
+<secrets.json> should be a file containing JSON with properties: clientId, clientKey and endpoint
 `;
 
-async function activate(configPath, handle) {
+async function accept(configPath, handle) {
     const config = await Config.load(configPath);
     await config.api.registerXPub(await config.api.getSeedPhrase(config.api.rootKeyId), handle);
 }
 
-activate.help = `
-signing-agent activate <secrets.json> <handle>
-    Activate a handle for a workspace to which the signing user has been invited
-`
+accept.help = `
+tokenized-signing-agent accept <secrets.json> <handle>
+    Accept an invitation to a workspace to which the signing user has been invited
+`;
 
 async function send(configPath, fromHandle, toHandle, instrumentId, amount) {
     const config = await Config.load(configPath);
-    let { activity, txids } = await config.api.send(fromHandle, toHandle, instrumentId, amount);
+    let { activity } = await config.api.send(fromHandle, toHandle, instrumentId, amount);
     console.log("Activity:", activity);
-    console.log("txids:", ...txids)
 }
+
+send.help = `
+tokenized-signing-agent send <secrets.json|env:SECRETS> <me@tkz.id> <you@tkz.id> <instrumentID> <amount>
+    Send tokens from handle for workspace (which must have been activated already) to handle. 
+    instrumentID can be found in the Tokenized desktop app
+    amount should be an integer in the minor unit of the token
+`;
 
 function help() {
     console.log("Tokenized protocol signing agent");
@@ -134,14 +147,20 @@ async function serve(configSource, port) {
     await httpServe(api, Number(port));
 }
 
+serve.help = `
+tokenized-signing-agent serve <secrets.json|env:SECRETS> <port>
+    Run an HTTP server which can be used to send tokens.
+    The HTTP server is unauthenticated and unencrypted and must be run in a secure environment.
+`;
+
 
 const [command, ...args] = process.argv.slice(2);
 
-const commands = { init, pair, seed, send, serve, activate };
+const commands = { init, pair, seed, send, serve, accept };
 
 try {
     await (commands[command] || help)(...args);
 } catch (e) {
-    console.log("ERROR:", e);
+    console.error("ERROR:", e);
     process.exit(1);
 }

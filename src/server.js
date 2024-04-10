@@ -18,7 +18,7 @@ curl -d '{"from": "me@tkz.id", "to": "you@tkz.id", "instrument": "instrumentId",
 /** @param {API} api */
 async function send(api, [], {from, to, instrument, amount}) {
     console.log("Send from:", from, "to:", to, "instrument:", instrument, "amount:", amount);
-    await api.send(fromHandle, toHandle, instrumentId, amount);
+    await api.send(from, to, instrument, amount);
     return {};
 }
 

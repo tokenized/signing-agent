@@ -51,6 +51,7 @@ export default class API {
       {
         pairing_code: pairingCode,
         client_key: this.clientKey,
+        client_id: this.clientId,
         external_id: this.clientId,
         public_key: JSON.stringify(publicJWK),
         key_id: keyId,
@@ -86,23 +87,28 @@ export default class API {
   }
 
   async registerXPub(seedPhrase, handle = null) {
-    const { data: profiles } = await this.fetch("GET", url`profiles`);
-    const profile = profiles.find(profile => profile.handle == profile.individual_handle);
-    console.log(profile);
-    const { data: lockboxes } = await this.fetch("GET", url`profiles/${profile.id}/lockboxes`);
-    console.log(lockboxes);
-    const lockbox = lockboxes.find(lockbox => lockbox.handle == (handle || profile.handle));
+    const { data: proposals } = await this.fetch("GET", url`proposals`);
+
+    const personalProfile = proposals.find(proposal => proposal.invited_profile_id);
+    const proposal = proposals.find(proposal => handle ? proposal.handle == handle : proposal.id == personalProfile.id);
+
+    if (!proposal?.lockbox_id) throw "Invitation not found for handle";
+
+    const lockboxId = proposal.lockbox_id;
+    const profileId = personalProfile.invited_profile_id;
 
     const { data: { path } } = await this.fetch(
       "GET",
-      url`profiles/${profile.id}/lock_boxes/${lockbox.id}/rootkeys/${this.rootKeyId}/proposal`
+      url`profiles/${profileId}/lock_boxes/${lockboxId}/rootkeys/${this.rootKeyId}/proposal`
     );
     const xpub = await this.makeXPub(seedPhrase, path);
     await this.fetch(
       "POST",
-      url`profiles/${profile.id}/lock_boxes/${lockbox.id}/rootkeys/${this.rootKeyId}/proposal`,
+      url`profiles/${profileId}/lock_boxes/${lockboxId}/rootkeys/${this.rootKeyId}/proposal`,
       { path, xpub }
     );
+
+    return proposal.handle;
   }
 
   async storeEncryptedRootKey(encryptedEntropy, rootKeyId) {
@@ -127,26 +133,23 @@ export default class API {
   }
 
   async send(fromHandle, toHandle, instrument, amount) {
-    const { data: profiles } = await this.fetch("GET", url`profiles`);
+    const { data: proposals } = await this.fetch("GET", url`proposals`);
 
-    const profile = profiles.find(({ handle }) => handle == fromHandle);
+    const proposal = proposals.find(proposal => proposal.handle == fromHandle);
 
-    const { data: lockboxes } = await this.fetch("GET", url`profiles/${profile.id}/lockboxes`);
-    const lockbox = lockboxes.find(({ handle }) => handle == fromHandle);
+    if (!proposal?.is_accepted) throw "Handle not yet activated";
 
-    console.log("profile", profile.id, "lockbox", lockbox.id);
+    const profileId = proposal.profile_id;
 
     const body = {
-      lock_box_id: lockbox.id,
+      lock_box_id: proposal.lockbox_id,
       recipients: [{ handle: toHandle, amount: Number(amount) }],
       instrument
     };
-    const { data: { activity_id } } = await this.fetch("PUT", url`profiles/${profile.id}/send`, body);
-
-    console.log("activity", activity_id);
+    const { data: { activity_id } } = await this.fetch("PUT", url`profiles/${profileId}/send`, body);
 
     while (true) {
-      const { data: { transactions } } = await this.fetch("GET", url`profiles/${profile.id}/activity/${activity_id}`);
+      const { data: { transactions } } = await this.fetch("GET", url`profiles/${profileId}/activity/${activity_id}`);
 
       let pending = transactions.filter(({ type }) => type == "pending_tx");
 
@@ -158,19 +161,11 @@ export default class API {
 
       const { pending_transaction_id } = pending[0];
 
-      console.log("pending transaction", pending_transaction_id);
-
-      await this.signPendingTxId(profile.id, pending_transaction_id);
+      await this.signPendingTxId(profileId, pending_transaction_id);
       break;
     }
 
-    const { data: { transactions } } = await this.fetch("GET", url`profiles/${profile.id}/activity/${activity_id}`);
-
-    const txids = transactions.filter(({ type }) => type == "tx").map(({ txid }) => txid);
-
-    console.log(transactions);
-
-    return { activity: activity_id, txids };
+    return { activity: activity_id };
   }
 
   async getSeedPhrase(rootKeyId) {
@@ -180,14 +175,12 @@ export default class API {
   }
 
   async sign(profileId, pendingTransaction) {
-    console.log("sign pending", JSON.stringify(pendingTransaction, null, 4));
     const tx = new Tx(pendingTransaction.tx);
     const signatures = [];
     for (let [index, input] of pendingTransaction.input_supplements.entries()) {
       const lockingScriptBuf = hexToArrayBuffer(input.locking_script);
 
       for (let needed of input.needed_signatures) {
-        console.log("sign!", needed);
         const seedPhrase = await this.getSeedPhrase(needed.root_key_id);
         const mnemonicSeed = await mnemonic2Seed(seedPhrase);
         const rootXKey = await XKey.fromSeed(mnemonicSeed);
@@ -209,8 +202,6 @@ export default class API {
       url`profiles/${profileId}/pending_transactions/${pendingTransaction.id}`,
       { signatures }
     );
-
-    console.log("Signing response");
 
     if (response?.data) {
       await this.sign(profileId, response?.data);
