@@ -12,7 +12,7 @@ async function readAll(stream) {
 
 const help = `
 Tokenized signing agent server.
-curl -d '{"from": "me@tkz.id", "to": "you@tkz.id", "instrument": "instrumentId","amount": 100}' http://localhost:8080
+curl -d '{"from": "me@tkz.id", "to": "you@tkz.id", "instrument": "instrumentId","amount": 100}' http://localhost:8080/send
 `;
 
 /** @param {API} api */
