@@ -64,6 +64,10 @@ export default class API {
       false,
     );
 
+    this.privateJWK = privateJWK;
+    this.keyId = keyId;
+    this.deviceId = deviceId;
+
     return { privateJWK, keyId, deviceId };
   }
 

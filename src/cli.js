@@ -5,6 +5,14 @@ import { entropyToMnemonic, mnemonicToEntropy } from "./crypto/bip39Mnemonic.js"
 import { normalizeMnemonic } from "./crypto/mnemonic.js";
 import { httpServe } from "./server.js";
 import { readFile, writeFile } from "node:fs/promises";
+const { styleText = (format, content) => content } = await import("node:util");
+
+let version;
+try {
+    version = JSON.parse(await readFile(new URL("../package.json", import.meta.url))).version;
+} catch (e) { }
+
+const commandStyle = content => `tokenized-signing-agent ${styleText('bold', styleText('red', content))}`;
 
 class Config {
     constructor(configPath, settings) {
@@ -83,7 +91,7 @@ async function seed(configPath, seedPhrase) {
 }
 
 seed.help = `
-tokenized-signing-agent seed <secrets.json> <seed phrase options>
+${commandStyle('seed')} <secrets.json> <seed phrase options>
     Configure a seed phrase for signing
 
 <seed phrase options>
@@ -107,7 +115,7 @@ async function pair(configPath, pairingCode, seedPhraseOptions) {
 }
 
 pair.help = `
-tokenized-signing-agent pair <secrets.json> [<seed phrase options>]
+${commandStyle('pair')} <secrets.json> [<seed phrase options>]
     Pair this agent with a user account and optionally configure a seed phrase
 
 <secrets.json> should be a file containing JSON with properties: clientId, clientKey and endpoint
@@ -119,7 +127,7 @@ async function accept(configPath, handle) {
 }
 
 accept.help = `
-tokenized-signing-agent accept <secrets.json> <handle>
+${commandStyle('accept')} <secrets.json> <handle>
     Accept an invitation to a workspace to which the signing user has been invited
 `;
 
@@ -130,7 +138,7 @@ async function send(configPath, fromHandle, toHandle, instrumentId, amount) {
 }
 
 send.help = `
-tokenized-signing-agent send <secrets.json|env:SECRETS> <me@tkz.id> <you@tkz.id> <instrumentID> <amount>
+${commandStyle('send')} <secrets.json|env:SECRETS> <me@tkz.id> <you@tkz.id> <instrumentID> <amount>
     Send tokens from handle for workspace (which must have been activated already) to handle. 
     instrumentID can be found in the Tokenized desktop app
     amount should be an integer in the minor unit of the token
@@ -138,6 +146,7 @@ tokenized-signing-agent send <secrets.json|env:SECRETS> <me@tkz.id> <you@tkz.id>
 
 function help() {
     console.log("Tokenized protocol signing agent");
+    if (version) console.log("Version", styleText("bold", version));
     console.log(Object.values(commands).map(command => command.help).filter(Boolean).join("\n"));
 }
 
@@ -148,7 +157,7 @@ async function serve(configSource, port) {
 }
 
 serve.help = `
-tokenized-signing-agent serve <secrets.json|env:SECRETS> <port>
+${commandStyle('serve')} <secrets.json|env:SECRETS> <port>
     Run an HTTP server which can be used to send tokens.
     The HTTP server is unauthenticated and unencrypted and must be run in a secure environment.
 `;
