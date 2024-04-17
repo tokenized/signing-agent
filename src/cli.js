@@ -115,7 +115,7 @@ async function pair(configPath, pairingCode, seedPhraseOptions) {
 }
 
 pair.help = `
-${commandStyle('pair')} <secrets.json> [<seed phrase options>]
+${commandStyle('pair')} <secrets.json> <pairing code> [<seed phrase options>]
     Pair this agent with a user account and optionally configure a seed phrase
 
 <secrets.json> should be a file containing JSON with properties: clientId, clientKey and endpoint
