@@ -91,3 +91,9 @@ const api = new API({
 
 await api.send("me@tkz.id", "you@tkz.id", "COUMes...Wea", 20);
 ```
+
+### Run as docker image
+
+```sh
+docker run -v $(pwd)/secrets.json:/usr/src/app/secrets.json -p 8080:8080 tokenized-signing-agent
+```
