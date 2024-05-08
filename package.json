@@ -1,11 +1,12 @@
 {
-  "name": "@tokenized/signing-agent",
+  "name": "tokenized-signing-agent",
   "version": "1.1.0",
   "exports": "./src/index.js",
   "bin": {
     "tokenized-signing-agent": "./src/cli.js"
   },
   "scripts": {
+    "start": "node src/cli.js serve secrets.json 8080",
     "test": "node --test"
   },
   "type": "module",
