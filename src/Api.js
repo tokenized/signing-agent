@@ -29,6 +29,7 @@ export default class API {
   }
 
   async updateDeviceAuthToken() {
+    if (!this.privateJWK) throw "Pairing not found";
     const privateKey = await importPrivateKey(this.privateJWK);
 
     let singleUseJWT = await createJWT(this.keyId, privateKey, {
@@ -38,7 +39,7 @@ export default class API {
     const { data: { token } } = await this.fetch("GET", url`auth/token/device`, null, singleUseJWT);
 
     this.tokenCreatedAt = Date.now() / 1e3;
-    this.token = token;
+    this.jwt = token;
     this.updateTokenPromise = null;
   }
 
@@ -71,10 +72,16 @@ export default class API {
     return { privateJWK, keyId, deviceId };
   }
 
-  async makeXPub(seedPhrase, path) {
+  static async makeXPub(seedPhrase, path) {
     const rootKey = await XKey.fromSeed(await mnemonic2Seed(seedPhrase))
     const xKey = await rootKey.derive(path);
     return xKey.toPublic().toString();
+  }
+
+  static async makeXPubInternal(seedPhrase, path) {
+    const rootKey = await XKey.fromSeed(await mnemonic2Seed(seedPhrase))
+    const xKey = await rootKey.derive(path);
+    return Buffer.from(xKey.toPublic().toInternalBytes()).toString("hex");
   }
 
   async verifySeedPhrase(seedPhrase) {
@@ -83,7 +90,7 @@ export default class API {
 
     for (let { id: rootKeyId } of rootKeys) {
       const { data: { derivation_path } } = await this.fetch("GET", url`users/@me/rootkeys/${rootKeyId}/check`);
-      const xpub = await this.makeXPub(seedPhrase, derivation_path);
+      const xpub = await API.makeXPub(seedPhrase, derivation_path);
       await this.fetch("POST", url`users/@me/rootkeys/${rootKeyId}/check`, { derivation_path, xpub });
       return rootKeyId;
     }
@@ -131,9 +138,14 @@ export default class API {
     }
   }
 
+  async hasRootkeys() {
+    const { data: rootkeys } = await this.fetch("GET", url`users/@me/rootkeys`);
+    return !!rootkeys.length;
+  }
+
   async getEncryptedRootKey(rootKeyId) {
     const { data: rootkeys } = await this.fetch("GET", url`users/@me/rootkeys`);
-    return Buffer.from(rootkeys.find(({ id, device_id }) => id == rootKeyId && device_id == this.deviceId)?.encrypted, "hex");
+    return Buffer.from(rootkeys.find(({ id, device_id }) => (!rootKeyId || id == rootKeyId) && device_id == this.deviceId)?.encrypted, "hex");
   }
 
   async send(fromHandle, toHandle, instrument, amount) {
@@ -221,10 +233,10 @@ export default class API {
   }
 
   async getToken() {
-    if (!this.token || expiredFraction(this.token, this.tokenCreatedAt) > 0.5) {
+    if (!this.jwt || expiredFraction(this.jwt, this.tokenCreatedAt) > 0.5) {
       await (this.updateTokenPromise ||= await this.updateDeviceAuthToken());
     }
-    return this.token;
+    return this.jwt;
   }
 
   async fetch(method, urlSuffix, body, token) {

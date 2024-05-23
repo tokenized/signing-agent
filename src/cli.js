@@ -1,11 +1,11 @@
 #!/usr/bin/env node
+import { readFile, writeFile } from "node:fs/promises";
 import API from "./Api.js";
 import { createSecretJWK, createSecretKeyBytes, encrypt } from "./crypto/Encryption.js";
 import { entropyToMnemonic, mnemonicToEntropy } from "./crypto/bip39Mnemonic.js";
 import { normalizeMnemonic } from "./crypto/mnemonic.js";
 import { httpServe } from "./server.js";
-import { readFile, writeFile } from "node:fs/promises";
-const { styleText = (format, content) => content } = await import("node:util");
+const { styleText = (_, content) => content } = await import("node:util");
 
 let version;
 try {
@@ -61,6 +61,9 @@ async function configureSeedPhrase(config, seedPhraseOptions) {
 
     let create = seedPhraseOptions == ":generate" || seedPhraseOptions == ":silent";
     if (create) {
+        if (await config.api.hasRootkeys()) {
+            throw "Account already has root keys. Supply a seed phrase.";
+        }
         entropy = await createSecretKeyBytes();
         seedPhrase = await entropyToMnemonic(entropy);
         if (seedPhraseOptions != ":silent") {
@@ -162,10 +165,19 @@ ${commandStyle('serve')} <secrets.json|env:SECRETS> <port>
     The HTTP server is unauthenticated and unencrypted and must be run in a secure environment.
 `;
 
+async function show(configSource) {
+    const config = await Config.load(configSource);
+    console.log(await config.api.getSeedPhrase(config.api.rootKeyId));
+}
+
+show.help = `
+${commandStyle('show')} <secrets.json|env:SECRETS>
+    Print seed phrase
+`;
 
 const [command, ...args] = process.argv.slice(2);
 
-const commands = { init, pair, seed, send, serve, accept };
+const commands = { init, pair, seed, send, serve, accept, show };
 
 try {
     await (commands[command] || help)(...args);
