@@ -171,7 +171,7 @@ export default class API {
 
       if (!pending.length) {
         console.log("Waiting for pending transactions to sign");
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 250));
         continue;
       }
 
@@ -181,8 +181,34 @@ export default class API {
       break;
     }
 
-    return { activity: activity_id };
+    let patience = 20;
+    while (patience-- > 0) {
+      const { data: { stage, transactions } } = await this.fetch("GET", url`profiles/${profileId}/activity/${activity_id}`);
+
+      if (stage != "executed") {
+        console.log("Waiting for completion");
+        await new Promise(resolve => setTimeout(resolve, 250));
+        continue;
+      }
+
+      let txs = transactions.filter(({ type }) => type == "tx").map(({ txid }) => txid);
+
+      return { activity: activity_id, txs, executed: true };
+    }
+    return { activity: activity_id, executed: false };
   }
+
+  async describe(handle, activity_id) {
+    const { data: proposals } = await this.fetch("GET", url`proposals`);
+
+    const proposal = proposals.find(proposal => proposal.handle == handle);
+    const profileId = proposal.profile_id;
+
+    const { data } = await this.fetch("GET", url`profiles/${profileId}/activity/${activity_id}`);
+    return data;
+  }
+
+
 
   async getSeedPhrase(rootKeyId) {
     const encryptedEntropy = await this.getEncryptedRootKey(rootKeyId);
@@ -219,9 +245,13 @@ export default class API {
       { signatures }
     );
 
+    let txId = await tx.id("hex");
+
     if (response?.data) {
-      await this.sign(profileId, response?.data);
+      return [txId, ...await this.sign(profileId, response?.data)];
     }
+
+    return [txId];
   }
 
   async signPendingTxId(profileId, pendingTransactionId) {
@@ -229,7 +259,7 @@ export default class API {
       "GET", url`profiles/${profileId}/pending_transactions/${pendingTransactionId}`
     );
 
-    await this.sign(profileId, response.data);
+    return await this.sign(profileId, response.data);
   }
 
   async getToken() {
