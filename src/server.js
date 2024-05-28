@@ -17,7 +17,7 @@ curl http://localhost:8080/describe/me@tkz.id/activityId
 `;
 
 /** @param {API} api */
-async function send(api, [], {from, to, instrument, amount}) {
+async function send(api, [], { from, to, instrument, amount }) {
     console.log("Send from:", from, "to:", to, "instrument:", instrument, "amount:", amount);
     const response = await api.send(from, to, instrument, amount);
     console.log("Completed", JSON.stringify(response));
@@ -31,7 +31,7 @@ async function describe(api, [handle, activityId]) {
 }
 
 
-const actions = {POST: {send}, GET: {describe}};
+const actions = { POST: { send }, GET: { describe } };
 
 /** @param {API} api */
 export async function httpServe(api, port) {
@@ -43,7 +43,7 @@ export async function httpServe(api, port) {
             if (request.method == "POST") {
                 body = JSON.parse(await readAll(request));
             }
-            
+
             const method = request.method;
 
             let [, action, ...rest] = request.url.split("/");
@@ -58,15 +58,15 @@ export async function httpServe(api, port) {
                     response.writeHead(200, { 'Content-Type': 'application/json' });
                     response.end(JSON.stringify(result));
                 } catch (error) {
-                    if (error.status && JSON.parse(error.content)) {
+                    if (error.status && error.details) {
                         response.writeHead(error.status, { 'Content-Type': 'application/json' });
-                        response.end(error.content);
+                        response.end(JSON.stringify(error.details));
                         return;
                     }
                     throw error;
                 }
 
-                
+
             }
         } catch (e) {
             console.log("Request error", e);

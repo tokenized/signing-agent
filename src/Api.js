@@ -16,6 +16,14 @@ function url([first, ...strings], ...parameters) {
   );
 }
 
+class APIError extends Error {
+  constructor(message, status, details) {
+    super(message);
+    this.status = status;
+    this.details = details;
+  }
+}
+
 export default class API {
   constructor({ clientId, clientKey, keyId, privateJWK, endpoint, deviceId, encryptionSecret, rootKeyId }) {
     this.clientId = clientId;
@@ -183,15 +191,19 @@ export default class API {
 
     let patience = 80;
     while (patience-- > 0) {
-      const { data: { stage, transactions } } = await this.fetch("GET", url`profiles/${profileId}/activity/${activity_id}`);
+      const { data: { stage, transactions, termination_reason } } = await this.fetch("GET", url`profiles/${profileId}/activity/${activity_id}`);
 
-      if (stage != "executed") {
+      if (stage != "executed" && !termination_reason) {
         console.log("Waiting for completion");
         await new Promise(resolve => setTimeout(resolve, 250));
         continue;
       }
 
       let txs = transactions.filter(({ type }) => type == "tx").map(({ txid }) => txid);
+
+      if (termination_reason) {
+        throw new APIError("Not successful", 400, { activity: activity_id, txs, executed: false, termination_reason });
+      }
 
       return { activity: activity_id, txs, executed: true };
     }
@@ -202,6 +214,7 @@ export default class API {
     const { data: proposals } = await this.fetch("GET", url`proposals`);
 
     const proposal = proposals.find(proposal => proposal.handle == handle);
+    if (!proposal) throw new APIError("Handle not found", 404, { code: "HANDLE_NOT_FOUND" });
     const profileId = proposal.profile_id;
 
     const { data } = await this.fetch("GET", url`profiles/${profileId}/activity/${activity_id}`);
@@ -285,7 +298,7 @@ export default class API {
 
     if (!response.ok) {
       const error = new Error(`API Error: ${response.status}`);
-      error.content = await response.text();
+      error.details = await response.json();
       error.status = response.status;
       throw error;
     }
