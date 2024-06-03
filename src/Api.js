@@ -1,3 +1,4 @@
+//@ts-check
 import XKey from "./crypto/XKey.js";
 import { generateECDSAJWK, importPrivateKey } from "./jwk.js";
 import { createJWT, expiredFraction } from "./jwt.js";
@@ -120,7 +121,7 @@ export default class API {
       "GET",
       url`profiles/${profileId}/lock_boxes/${lockboxId}/rootkeys/${this.rootKeyId}/proposal`
     );
-    const xpub = await this.makeXPub(seedPhrase, path);
+    const xpub = await API.makeXPub(seedPhrase, path);
     await this.fetch(
       "POST",
       url`profiles/${profileId}/lock_boxes/${lockboxId}/rootkeys/${this.rootKeyId}/proposal`,
@@ -148,7 +149,7 @@ export default class API {
 
   async hasRootkeys() {
     const { data: rootkeys } = await this.fetch("GET", url`users/@me/rootkeys`);
-    return !!rootkeys.length;
+    return !!rootkeys?.length;
   }
 
   async getEncryptedRootKey(rootKeyId) {
