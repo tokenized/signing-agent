@@ -95,15 +95,20 @@ export default class API {
 
   async verifySeedPhrase(seedPhrase) {
     const { data: rootKeys } = await this.fetch("GET", url`users/@me/rootkeys`);
-    if (!rootKeys.length) return null;
+    if (!rootKeys?.length) return null;
 
     for (let { id: rootKeyId } of rootKeys) {
-      const { data: { derivation_path } } = await this.fetch("GET", url`users/@me/rootkeys/${rootKeyId}/check`);
-      const xpub = await API.makeXPub(seedPhrase, derivation_path);
-      await this.fetch("POST", url`users/@me/rootkeys/${rootKeyId}/check`, { derivation_path, xpub });
-      return rootKeyId;
+      try {
+        const { data: { derivation_path } } = await this.fetch("GET", url`users/@me/rootkeys/${rootKeyId}/check`);
+        const xpub = await API.makeXPub(seedPhrase, derivation_path);
+        await this.fetch("POST", url`users/@me/rootkeys/${rootKeyId}/check`, { derivation_path, xpub });
+        return rootKeyId;
+      } catch (e) {
+        if (e.status == 404) {
+          continue;
+        }
+      }
     }
-    throw new Error("Seed phrase is not valid");
   }
 
   async registerXPub(seedPhrase, handle = null) {
@@ -147,9 +152,13 @@ export default class API {
     }
   }
 
-  async hasRootkeys() {
+  async getRootkeys() {
     const { data: rootkeys } = await this.fetch("GET", url`users/@me/rootkeys`);
-    return !!rootkeys?.length;
+    return rootkeys || [];
+  }
+
+  async hasRootkeys() {
+    return (await this.getRootkeys()).length;
   }
 
   async getEncryptedRootKey(rootKeyId) {
@@ -162,7 +171,8 @@ export default class API {
 
     const proposal = proposals.find(proposal => proposal.handle == fromHandle);
 
-    if (!proposal?.is_accepted) throw "Handle not yet activated";
+    if (!proposal) throw new APIError("Sender handle not found", 404, { code: "HANDLE_NOT_FOUND" });
+    if (!proposal?.is_accepted) throw new APIError("Handle not yet activated", 404, { code: "HANDLE_NOT_ACTIVE" });
 
     const profileId = proposal.profile_id;
 
@@ -171,7 +181,14 @@ export default class API {
       recipients: [{ handle: toHandle, amount: Number(amount) }],
       instrument
     };
-    const { data: { activity_id } } = await this.fetch("PUT", url`profiles/${profileId}/send`, body);
+    const { data: { activity_id } } = await this.fetch("PUT", url`profiles/${profileId}/send`, body).catch(e => {
+      console.log("Send failed", e.message);
+      console.log(JSON.stringify(e, null, 4));
+      if (e.details.code) {
+        throw e;
+      }
+      throw new APIError("Send failed", 400, { code: "SEND_FAILED" });
+    });
 
     while (true) {
       const { data: { transactions } } = await this.fetch("GET", url`profiles/${profileId}/activity/${activity_id}`);
@@ -218,8 +235,15 @@ export default class API {
     if (!proposal) throw new APIError("Handle not found", 404, { code: "HANDLE_NOT_FOUND" });
     const profileId = proposal.profile_id;
 
-    const { data } = await this.fetch("GET", url`profiles/${profileId}/activity/${activity_id}`);
-    return data;
+    const { data: { stage, transactions, termination_reason } } = await this.fetch("GET", url`profiles/${profileId}/activity/${activity_id}`);
+
+    let txs = transactions.filter(({ type }) => type == "tx").map(({ txid }) => txid);
+
+    if (termination_reason) {
+      throw new APIError("Not successful", 400, { activity: activity_id, txs, executed: false, termination_reason });
+    }
+
+    return { activity: activity_id, txs, executed: true };
   }
 
 

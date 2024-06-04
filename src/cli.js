@@ -74,6 +74,16 @@ async function configureSeedPhrase(config, seedPhraseOptions) {
         seedPhrase = normalizeMnemonic(await readFile(seedPhraseOptions, { encoding: "utf8" }));
         entropy = await mnemonicToEntropy(seedPhrase);
         rootKeyId = await config.api.verifySeedPhrase(seedPhrase);
+        if (!rootKeyId) {
+            let rootKeys = await config.api.getRootkeys();
+            if (rootKeys.length >= 1) {
+                console.log("Account already has root keys, but verification could not be attempted (no public key available)");
+                rootKeyId = rootKeys[0].id;
+            } else {
+                console.log("New root key being registered");
+            }
+            create = true;
+        }
     }
     const encryptedEntropy = await encrypt(entropy, encryptionSecret);
 
@@ -172,7 +182,7 @@ function help() {
 }
 
 
-async function serve(configSource, port) {
+async function serve(configSource, port = 8080) {
     const { api } = await Config.load(configSource);
     await httpServe(api, Number(port));
 }

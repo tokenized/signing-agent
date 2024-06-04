@@ -77,5 +77,5 @@ export async function httpServe(api, port) {
 
     server.listen(port);
     await once(server, "listening");
-    console.log("Listening")
+    console.log(`Listening on localhost:${port}`);
 }
