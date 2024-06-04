@@ -1,6 +1,6 @@
 {
   "name": "@tokenized/signing-agent",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "exports": "./src/index.js",
   "bin": {
     "tokenized-signing-agent": "src/cli.js"
