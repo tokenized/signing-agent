@@ -117,6 +117,9 @@ ${commandStyle('seed')} <secrets.json> <seed phrase options>
 `;
 
 async function pair(configPath, pairingCode, seedPhraseOptions) {
+    if (!pairingCode) {
+        throw "Pairing code required";
+    }
     const config = await Config.load(configPath);
     if (config.settings.privateJWK) throw "Already paired";
 

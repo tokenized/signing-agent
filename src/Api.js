@@ -163,7 +163,11 @@ export default class API {
 
   async getEncryptedRootKey(rootKeyId) {
     const { data: rootkeys } = await this.fetch("GET", url`users/@me/rootkeys`);
-    return Buffer.from(rootkeys.find(({ id, device_id }) => (!rootKeyId || id == rootKeyId) && device_id == this.deviceId)?.encrypted, "hex");
+    let rootKey = rootkeys.find(({ id, device_id }) => (!rootKeyId || id == rootKeyId) && device_id == this.deviceId);
+    if (!rootKey) {
+      throw "Root key not found";
+    }
+    return Buffer.from(rootKey?.encrypted, "hex");
   }
 
   async send(fromHandle, toHandle, instrument, amount) {
@@ -208,24 +212,17 @@ export default class API {
     }
 
     let patience = 80;
-    while (patience-- > 0) {
+    while (true) {
       const { data: { stage, transactions, termination_reason } } = await this.fetch("GET", url`profiles/${profileId}/activity/${activity_id}`);
 
-      if (stage != "executed" && !termination_reason) {
+      if (patience-- > 0 && stage != "executed" && !termination_reason) {
         console.log("Waiting for completion");
         await new Promise(resolve => setTimeout(resolve, 250));
         continue;
       }
 
-      let txs = transactions.filter(({ type }) => type == "tx").map(({ txid }) => txid);
-
-      if (termination_reason) {
-        throw new APIError("Not successful", 400, { activity: activity_id, txs, executed: false, termination_reason });
-      }
-
-      return { activity: activity_id, txs, executed: true };
+      return transformActivity(transactions, termination_reason, activity_id, stage);
     }
-    return { activity: activity_id, executed: false };
   }
 
   async describe(handle, activity_id) {
@@ -237,13 +234,7 @@ export default class API {
 
     const { data: { stage, transactions, termination_reason } } = await this.fetch("GET", url`profiles/${profileId}/activity/${activity_id}`);
 
-    let txs = transactions.filter(({ type }) => type == "tx").map(({ txid }) => txid);
-
-    if (termination_reason) {
-      throw new APIError("Not successful", 400, { activity: activity_id, txs, executed: false, termination_reason });
-    }
-
-    return { activity: activity_id, txs, executed: true };
+    return transformActivity(transactions, termination_reason, activity_id, stage);
   }
 
 
@@ -331,3 +322,14 @@ export default class API {
     return response.headers.get("Content-type") ? await response.json() : await response.text();
   }
 }
+
+function transformActivity(transactions, termination_reason, activity_id, stage) {
+  let txs = transactions.filter(({ type }) => type == "tx").map(({ txid }) => txid);
+
+  if (termination_reason) {
+    throw new APIError("Not successful", 400, { activity: activity_id, txs, executed: false, termination_reason, stage });
+  }
+
+  return { activity: activity_id, txs, executed: stage == "executed", stage };
+}
+
