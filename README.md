@@ -44,7 +44,7 @@ After this point the `secrets.json` will contain:
 Create a new workspace (in the desktop app) and invite the signing agent and another administrator with manual signing access in a 1 of 2 signing arrangement. Accept the invitiation to the signing agent to join that workspace:
 
 ```
-tokenized-signing-agent accept <workspace-handle>
+tokenized-signing-agent accept secrets.json <workspace-handle>
 ```
 
 ### Test the token send functionality

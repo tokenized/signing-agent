@@ -8,6 +8,10 @@ import { decrypt } from "./crypto/Encryption.js";
 import { hexToArrayBuffer } from "./crypto/utils.js";
 import { entropyToMnemonic } from "./crypto/bip39Mnemonic.js";
 
+/**
+ * @param {TemplateStringsArray} template
+ * @param {any[]} parameters
+ */
 function url([first, ...strings], ...parameters) {
   return (
     first +
@@ -314,7 +318,9 @@ export default class API {
 
     if (!response.ok) {
       const error = new Error(`API Error: ${response.status}`);
+      // @ts-ignore
       error.details = await response.json();
+      // @ts-ignore
       error.status = response.status;
       throw error;
     }

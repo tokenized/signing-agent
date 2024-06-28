@@ -94,6 +94,7 @@ async function configureSeedPhrase(config, seedPhraseOptions) {
     }
     config.update({ rootKeyId, encryptionSecret });
     await config.save();
+    console.log("Seed phrase configured");
 }
 
 async function seed(configPath, seedPhrase) {
@@ -116,22 +117,41 @@ ${commandStyle('seed')} <secrets.json> <seed phrase options>
     Use an existing (previously paired for this account) seed phrase
 `;
 
-async function pair(configPath, pairingCode, seedPhraseOptions) {
-    if (!pairingCode) {
-        throw "Pairing code required";
+async function pair(configPath, pairingToken, seedPhraseOptions) {
+    if (!pairingToken) {
+        throw "Pairing token required";
     }
+
     const config = await Config.load(configPath);
+
+    let pairingCode = pairingToken;
+    if (pairingToken.length != 9) {
+        if (pairingToken.length != 11) throw "Pairing token should be length 9 or 11";
+        if (pairingToken[0] != "1") throw "Pairing token is wrong version";
+
+        if (config.settings.platformCode && pairingToken[1] != config.settings.platformCode) throw "Pairing token is for wrong platform";
+
+        pairingCode = pairingToken.slice(2);
+    }
+
     if (config.settings.privateJWK) throw "Already paired";
 
-    config.update(await config.api.pair(pairingCode));
+    try {
+        config.update(await config.api.pair(pairingCode));
+    } catch (e) {
+        if (e?.status == 404) {
+            throw "Pairing code not found - may have expired or already been used."
+        }
+    }
     await config.save();
+    console.log("Pairing succeeded");
     if (seedPhraseOptions) {
         await configureSeedPhrase(config, seedPhraseOptions);
     }
 }
 
 pair.help = `
-${commandStyle('pair')} <secrets.json> <pairing code> [<seed phrase options>]
+${commandStyle('pair')} <secrets.json> <pairing token> [<seed phrase options>]
     Pair this agent with a user account and optionally configure a seed phrase
 
 <secrets.json> should be a file containing JSON with properties: clientId, clientKey and endpoint
@@ -214,6 +234,9 @@ const commands = { init, pair, seed, send, serve, accept, show, describe };
 try {
     await (commands[command] || help)(...args);
 } catch (e) {
-    console.error("ERROR:", e);
+    console.error(styleText('red', "ERROR:"), e);
+    if (commands[command]?.help) {
+        console.error(commands[command]?.help);
+    }
     process.exit(1);
 }
