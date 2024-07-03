@@ -174,24 +174,60 @@ export default class API {
     return Buffer.from(rootKey?.encrypted, "hex");
   }
 
-  async send(fromHandle, toHandle, instrument, amount) {
+  async getHandleProposal(handle) {
     const { data: proposals } = await this.fetch("GET", url`proposals`);
 
-    const proposal = proposals.find(proposal => proposal.handle == fromHandle);
+    const proposal = proposals.find(proposal => proposal.handle == handle);
 
-    if (!proposal) throw new APIError("Sender handle not found", 404, { code: "HANDLE_NOT_FOUND" });
+    if (!proposal) throw new APIError("Signing handle not found", 404, { code: "HANDLE_NOT_FOUND" });
     if (!proposal?.is_accepted) throw new APIError("Handle not yet activated", 404, { code: "HANDLE_NOT_ACTIVE" });
 
-    const profileId = proposal.profile_id;
+    return proposal;
+  }
+
+  async signHandshake(fromHandle, handshakeId) {
+    let { profile_id: profileId } = await this.getHandleProposal(fromHandle);
+
+    let { data: handshakes } = await this.fetch(
+      "GET", url`auth/handshakes`
+    );
+
+    let handshake = handshakes.find(({ id }) => id == handshakeId);
+    if (!handshake) {
+      throw new APIError("Handshake not found", 404, { code: "HANDSHAKE_NOT_FOUND" });
+    }
+
+    let { request_id: requestId } = handshake;
+
+    const { data: pendingTransaction } = await this.fetch(
+      "GET", url`profiles/${profileId}/pending_transactions/request_id/${requestId}`
+    );
+
+    if (!pendingTransaction) {
+      throw new APIError("Pending transaction not found", 404, { code: "PENDING_TRANSACTION_NOT_FOUND" });
+    }
+
+    let result = await this.sign(profileId, pendingTransaction);
+
+    await this.fetch("PUT", url`auth/handshakes`, {
+      handshake_id: handshakeId,
+      device_id: this.deviceId,
+      status: "approved"
+    });
+
+    return result;
+  }
+
+
+  async send(fromHandle, toHandle, instrument, amount) {
+    let { lockbox_id: lockboxId, profile_id: profileId } = await this.getHandleProposal(fromHandle);
 
     const body = {
-      lock_box_id: proposal.lockbox_id,
+      lock_box_id: lockboxId,
       recipients: [{ handle: toHandle, amount: Number(amount) }],
       instrument
     };
     const { data: { activity_id } } = await this.fetch("PUT", url`profiles/${profileId}/send`, body).catch(e => {
-      console.log("Send failed", e.message);
-      console.log(JSON.stringify(e, null, 4));
       if (e.details.code) {
         throw e;
       }
@@ -204,7 +240,7 @@ export default class API {
       let pending = transactions.filter(({ type }) => type == "pending_tx");
 
       if (!pending.length) {
-        console.log("Waiting for pending transactions to sign");
+        console.error("Waiting for pending transactions to sign");
         await new Promise(resolve => setTimeout(resolve, 250));
         continue;
       }
@@ -220,7 +256,7 @@ export default class API {
       const { data: { stage, transactions, termination_reason } } = await this.fetch("GET", url`profiles/${profileId}/activity/${activity_id}`);
 
       if (patience-- > 0 && stage != "executed" && !termination_reason) {
-        console.log("Waiting for completion");
+        console.error("Waiting for completion");
         await new Promise(resolve => setTimeout(resolve, 250));
         continue;
       }
@@ -318,8 +354,13 @@ export default class API {
 
     if (!response.ok) {
       const error = new Error(`API Error: ${response.status}`);
+      let body = await response.text();
+      let details = body;
+      try {
+        details = JSON.parse(body);
+      } catch (e) { }
       // @ts-ignore
-      error.details = await response.json();
+      error.details = details;
       // @ts-ignore
       error.status = response.status;
       throw error;

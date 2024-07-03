@@ -185,6 +185,27 @@ ${commandStyle('send')} <secrets.json|env:SECRETS> <me@tkz.id> <you@tkz.id> <ins
     amount should be an integer in the minor unit of the token
 `;
 
+async function sign(configPath, signingHandle, type, id) {
+    const config = await Config.load(configPath);
+    try {
+        if (type != "handshake") {
+            throw { details: "INVALID_TYPE" };
+        }
+        let txIds = await config.api.signHandshake(signingHandle, id);
+        console.log(JSON.stringify({ signed: true, txIds }));
+    } catch (e) {
+        if (e?.details) console.log(JSON.stringify({ signed: false, error: e.details }));
+        else console.log(JSON.stringify({ signed: false, error: `${e}` }));
+        process.exit(1);
+    }
+
+}
+
+sign.help = `
+${commandStyle('sign')} <secrets.json|env:SECRETS> <me@tkz.id> handshake <handshakeID>
+    Sign a handshake to approve a transfer
+`
+
 async function describe(configPath, handle, activityId) {
     const config = await Config.load(configPath);
     console.log(await config.api.describe(handle, activityId));
@@ -229,7 +250,7 @@ ${commandStyle('show')} <secrets.json|env:SECRETS>
 
 const [command, ...args] = process.argv.slice(2);
 
-const commands = { init, pair, seed, send, serve, accept, show, describe };
+const commands = { init, pair, seed, send, serve, accept, show, describe, sign };
 
 try {
     await (commands[command] || help)(...args);
