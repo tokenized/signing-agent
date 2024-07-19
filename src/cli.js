@@ -191,8 +191,8 @@ async function sign(configPath, signingHandle, type, id) {
         if (type != "handshake") {
             throw { details: "INVALID_TYPE" };
         }
-        let txIds = await config.api.signHandshake(signingHandle, id);
-        console.log(JSON.stringify({ signed: true, txIds }));
+        let result = await config.api.signHandshake(signingHandle, id);
+        console.log(JSON.stringify(result));
     } catch (e) {
         if (e?.details) console.log(JSON.stringify({ signed: false, error: e.details }));
         else console.log(JSON.stringify({ signed: false, error: `${e}` }));
@@ -204,7 +204,7 @@ async function sign(configPath, signingHandle, type, id) {
 sign.help = `
 ${commandStyle('sign')} <secrets.json|env:SECRETS> <me@tkz.id> handshake <handshakeID>
     Sign a handshake to approve a transfer
-`
+`;
 
 async function describe(configPath, handle, activityId) {
     const config = await Config.load(configPath);

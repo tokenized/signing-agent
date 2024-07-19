@@ -111,6 +111,7 @@ export default class API {
         if (e.status == 404) {
           continue;
         }
+        throw new Error(`Unable to verify seed phrase: ${e}`);
       }
     }
   }
@@ -197,17 +198,37 @@ export default class API {
       throw new APIError("Handshake not found", 404, { code: "HANDSHAKE_NOT_FOUND" });
     }
 
-    let { request_id: requestId } = handshake;
+    let { request_id: requestId, scope } = handshake;
 
-    const { data: pendingTransaction } = await this.fetch(
-      "GET", url`profiles/${profileId}/pending_transactions/request_id/${requestId}`
-    );
+    let result;
 
-    if (!pendingTransaction) {
-      throw new APIError("Pending transaction not found", 404, { code: "PENDING_TRANSACTION_NOT_FOUND" });
+    if (scope == "trade_reject") {
+      await this.fetch("POST",
+        url`profiles/${profileId}/requests/${requestId}/reject`,
+        {},
+      );
+
+      result = { rejected: true };
+    } else if (scope == "reject_proposal") {
+      await this.fetch("POST",
+        url`profiles/${profileId}/pending_transactions/requests/${requestId}/reject`,
+        {},
+      );
+
+      result = { rejected: true };
+    } else {
+      const { data: pendingTransaction } = await this.fetch(
+        "GET", url`profiles/${profileId}/pending_transactions/request_id/${requestId}`
+      );
+
+      if (!pendingTransaction) {
+        throw new APIError("Pending transaction not found", 404, { code: "PENDING_TRANSACTION_NOT_FOUND" });
+      }
+
+      let txIds = await this.sign(profileId, pendingTransaction);
+
+      result = { signed: true, txIds };
     }
-
-    let result = await this.sign(profileId, pendingTransaction);
 
     await this.fetch("PUT", url`auth/handshakes`, {
       handshake_id: handshakeId,
@@ -289,6 +310,11 @@ export default class API {
     const tx = new Tx(pendingTransaction.tx);
     const signatures = [];
     for (let [index, input] of pendingTransaction.input_supplements.entries()) {
+
+      if (!input.needed_signatures) {
+        continue;
+      }
+
       const lockingScriptBuf = hexToArrayBuffer(input.locking_script);
 
       for (let needed of input.needed_signatures) {
