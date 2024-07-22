@@ -194,6 +194,7 @@ async function sign(configPath, signingHandle, type, id) {
         let result = await config.api.signHandshake(signingHandle, id);
         console.log(JSON.stringify(result));
     } catch (e) {
+        console.error("ERROR:", e);
         if (e?.details) console.log(JSON.stringify({ signed: false, error: e.details }));
         else console.log(JSON.stringify({ signed: false, error: `${e}` }));
         process.exit(1);
